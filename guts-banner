@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Large Guts manga banner, drawn with the same Unicode dot cells as mikusays.
+
+Usage: guts-banner [--width 24..200] [--plain]
+The default fits the terminal and uses up to 21 lines of artwork by default.
+Runtime: Python 3 standard library only; no image protocol or network needed.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+
+
+def render(variant, width, plain=False):
+    # Foreground only: the terminal background stays visible between glyphs.
+    lines = ['  ' + line for line in variant['lines']]
+    body = '\n'.join(lines) + '\n\n\n  -made by AzuRT <3'
+    if not plain:
+        body = '\033[38;2;255;255;255m' + body + '\033[0m'
+    return body + '\n\n'
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--width', type=int, help='art width, 24 to 200 columns (default: up to 144)')
+    parser.add_argument('--plain', action='store_true', help='Unicode artwork without color escape sequences')
+    args = parser.parse_args()
+    if args.width is not None and not 24 <= args.width <= 200:
+        parser.error('--width must be between 24 and 200')
+    terminal = shutil.get_terminal_size((148, 36))
+    if terminal.columns < 28 or terminal.lines < 8:
+        return
+    width = min(args.width or 144, terminal.columns - 4)
+    width -= width % 2
+    data_path = Path(__file__).resolve().with_name('art.json')
+    if not data_path.is_file():
+        data_path = Path.home() / '.local/share/guts-banner/art.json'
+    try:
+        variants = json.loads(data_path.read_text())
+        # Keep room for the prompt and several commands in short windows.
+        max_rows = max(2, terminal.lines - 6)
+        while width > 24 and variants[str(width)]['height'] > max_rows:
+            width -= 2
+        plain = args.plain or 'NO_COLOR' in os.environ or os.environ.get('TERM') == 'dumb'
+        sys.stdout.write(render(variants[str(width)], width, plain))
+    except (OSError, ValueError, KeyError) as error:
+        print(f'guts-banner: {error}', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except BrokenPipeError:
+        sys.exit(0)
